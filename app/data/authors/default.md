@@ -1,16 +1,14 @@
 ---
-name: Heads Watzang
-avatar: /static/images/avatar.jpg
-occupation: Professor of Robotics
-company: Stanford University
-email: address@yoursite.com
-twitter: https://twitter.com/Twitter
-linkedin: https://www.linkedin.com
-github: https://github.com
+name: Sangeet Agarwal
+avatar: /static/images/avatar.png
+occupation: Full Stack Developer / Architect
+twitter: https://twitter.com/sangymohan
+linkedin: https://www.linkedin.com/in/sangeetagarwal/
+github: https://github.com/SangeetAgarwal
 ---
 
-Heads Watzang is a professor of robotics at the Standford University.
+Hi, I'm Sangeet, Principal Software developer at a healthcare accreditation organization based in Washington DC.
 
-Aliquip aliqua excepteur occaecat ullamco qui aliquip ad cillum irure non velit dolore occaecat. Minim enim ad duis eu quis ullamco consectetur nulla laborum ex sit esse. Exercitation voluptate non minim dolore qui laboris ex ex. Dolore quis exercitation et esse esse incididunt commodo fugiat cillum ipsum consectetur cupidatat minim.
+This is where I hope to share my learnings about all things software development, over the years I have worked on a whole host of client side and server side technologies.
 
-Velit ea adipisicing magna incididunt consectetur sint deserunt quis nostrud cupidatat ea culpa anim. Veniam magna veniam laboris nostrud velit dolor magna anim ut velit esse in in ut. Ea cillum consequat voluptate est officia. Id cillum laboris excepteur laborum esse nostrud aliquip mollit do. Laborum et incididunt amet laboris aliquip ut ad do reprehenderit. Excepteur laborum est eu ut quis labore amet labore cillum incididunt enim voluptate excepteur. Veniam quis consectetur sit ad magna duis proident ea incididunt qui incididunt adipisicing.
+This site has been constructed from [tailwind-remix-run-mdxjs-typescript-starter-blog](https://github.com/SangeetAgarwal/tailwind-remix-run-mdxjs-typescript-starter-blog) which I also wrote.

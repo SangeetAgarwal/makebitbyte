@@ -2,20 +2,10 @@ import type { Project } from "~/types/data";
 
 const projectsData: Project[] = [
   {
-    title: "A Search Engine",
-    description: `What if you could look up any information in the world? Webpages, images, videos
-    and more. Google has many features to help you find exactly what you're looking
-    for.`,
-    imgSrc: "/static/images/google.png",
-    href: "https://www.google.com",
-  },
-  {
-    title: "The Time Machine",
-    description: `Imagine being able to travel back in time or to the future. Simple turn the knob
-    to the desired date and press "Go". No more worrying about lost keys or
-    forgotten headphones with this simple yet affordable solution.`,
-    imgSrc: "/static/images/time-machine.jpg",
-    href: "/blog/the-time-machine",
+    title: "Tailwind Remix-run Starter Blog",
+    description: `This blog is constructed from Tailwind Remix-run Starter Blog. It is a distinct project that I maintain in my spare time. It uses Remix-run's blues stack.`,
+    imgSrc: "/static/images/twitter-card.png",
+    href: "https://github.com/SangeetAgarwal/tailwind-remix-run-mdxjs-typescript-starter-blog",
   },
 ];
 

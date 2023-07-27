@@ -30,18 +30,23 @@ export default function Index() {
   return (
     <>
       <div className="divide-y divide-gray-200 dark:divide-gray-700">
-        <div className="space-y-2 pb-8 pt-6 md:space-y-5">
-          <div className="flex flex-col gap-x-12 pb-9 xl:flex-row">
-            <div className="flex flex-col gap-4">
-              <h1 className="text-5xl font-extrabold leading-9 tracking-tight text-gray-900 dark:text-gray-100 sm:text-4xl sm:leading-10 md:text-5xl md:leading-14">
-                Latest
-              </h1>
-              <h2 className="prose pt-4 text-lg text-gray-600 dark:text-gray-400">
-                {siteMetadata.description}
-              </h2>
-            </div>
+        <div className="my-6 flex flex-col items-center gap-x-12 xl:mb-12 xl:flex-row">
+          <div className="pt-6">
+            <h1 className="pb-6 text-2xl font-extrabold leading-9 tracking-tight text-gray-900 dark:text-gray-100 sm:text-4xl sm:leading-10 md:text-6xl md:leading-14">
+              Hi, I’m Sangeet Agarwal
+            </h1>
+            <h2 className="prose text-lg text-gray-600 dark:text-gray-400">
+              {`Welcome to my blog - ${siteMetadata.description}. I'm a full stack developer and in my spare time I like developing `}
+              <Link to="/projects">side projects</Link>
+              {" and "}
+              <Link to="/blog">blogging</Link>
+              {" about them. Hope you enjoy your time here!"}
+            </h2>
           </div>
         </div>
+        <h2 className="flex pb-6 text-2xl font-extrabold tracking-tight text-gray-900 dark:text-gray-100 sm:text-3xl md:text-5xl">
+          Latest
+        </h2>
         <ul className="divide-y divide-gray-200 dark:divide-gray-700">
           {!posts.length && "No posts found."}
           {posts.slice(0, MAX_DISPLAY).map((frontMatter: BlogFrontMatter) => {

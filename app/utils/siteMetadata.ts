@@ -1,17 +1,16 @@
 const siteMetadata = {
-  title: "Tailwind Remix-run Starter Blog",
-  author: "Heads Watzang",
-  headerTitle: "Tailwind Remix-run Starter Blog",
-  description: "A blog created with Remix-run and Tailwind.css",
+  title: "MakeBitByte",
+  author: "Sangeet Agarwal",
+  headerTitle: "MakeBitByte",
+  description: "Musings of a restless mind",
+  siteUrl: "https://makebitbyte.com/",
   language: "en-us",
   theme: "system", // system, dark or light
-  email: "address@yoursite.com",
-  github: "https://github.com",
-  twitter: "https://twitter.com/Twitter",
-  facebook: "https://facebook.com",
-  youtube: "https://youtube.com",
-  linkedin: "https://www.linkedin.com",
-  stackoverflow: "https://www.stackoverflow.com",
+  github: "https://github.com/SangeetAgarwal",
+  twitter: "https://twitter.com/sangymohan",
+  linkedin: "https://www.linkedin.com/in/sangeetagarwal/",
+  stackoverflow: "https://stackoverflow.com/users/2188275/sangeet-agarwal",
+  youtube: "https://www.youtube.com/channel/UCtNmwaDH4rDTO7Fh-P84HRw",
   locale: "en-US",
 };
 

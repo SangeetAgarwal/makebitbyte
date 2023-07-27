@@ -3,7 +3,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = "tailwind-remix-run-mdxjs-typescript-starter-blog"
+app = "bitoflearning-9a57"
 primary_region = "iad"
 kill_signal = "SIGINT"
 kill_timeout = "5s"
@@ -11,8 +11,8 @@ kill_timeout = "5s"
 [experimental]
   auto_rollback = true
 
-[deploy]
-  release_command = "bash ./scripts/migrate.sh"
+# [deploy]
+#   release_command = "bash ./scripts/migrate.sh"
 
 [env]
   METRICS_PORT = "8081"

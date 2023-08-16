@@ -3,7 +3,7 @@ const siteMetadata = {
   author: "Sangeet Agarwal",
   headerTitle: "MakeBitByte",
   description: "Musings of a restless mind",
-  siteUrl: "https://makebitbyte.com",
+  siteUrl: "https://www.makebitbyte.com",
   language: "en-us",
   theme: "system", // system, dark or light
   github: "https://github.com/SangeetAgarwal",

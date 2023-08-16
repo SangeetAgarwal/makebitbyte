@@ -26,7 +26,7 @@ kill_timeout = "5s"
   [[services.ports]]
     port = 80
     handlers = ["http"]
-    force_https = true
+    # force_https = true
 
   [[services.ports]]
     port = 443

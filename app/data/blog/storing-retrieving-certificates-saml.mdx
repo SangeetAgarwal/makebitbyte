@@ -1,0 +1,86 @@
+---
+title: Storing and retrieving certificates X.509 certificates in Azure Key Vault
+date: "2023-08-23"
+lastmod: "2023-08-23"
+tags: ["SAML", "X.509 certificate", "Azure Key Vault"]
+draft: false
+summary: Storing and retrieving certificates X.509 certificates in Azure Key Vault
+layout: PostSimpleLayout
+---
+
+## Overview
+
+X.509 certificates are used to secure SAML SSO between the identity provider and service provider.
+I used ComponentSpace SAML library which provides quite a few options to store certificates such as local files system,
+windows certificate store, certificate string and Azure Key Vault. I chose to go with Azure Key Vault.
+Remember, my app is hosted on Azure itself and is a .NET Core app.
+
+## Rationale for storing certificates in Azure Key Vault
+
+1. Compliance
+   1. Having `.pfx` file in the local drive on azure with secrets in the `appsettings` is a massive red flag.
+2. Managing secrets i.e. `pfx` in source control isn’t easy since the `pfx` and secret will be available in appsettings
+   1. Default `.gitignore` actually warns you against checking in `.pfx` files and asks if you are sure you want to check in file of this type.
+3. CI/CD,
+   1. We’ll have to constantly worry about deploying `.pfx` files.
+   2. Most importantly, likely you'll have multiple environments and each your developemnt/test environment and production/staging might/should have its own
+      certificate. This means each environment will have its own appsettings file and you'll need to customize your
+      build process to deploy the right appsettings file to the right environment. You could always alleviate this some what by storing
+      the base 64 encoded string of the certificate and corresponding password in the [azure app configuration](https://learn.microsoft.com/en-us/azure/azure-app-configuration/overview) but seems sub optimal
+      since you are still left to manage secrets and those base 64 encoded strings for the different environments. Plus, those then would be viewable to other
+      developers unless you have some sort of access control on the azure app configuration which then leads to more complexity.
+
+## How to store certificates in Azure Key Vault
+
+See [this](https://learn.microsoft.com/en-us/azure/key-vault/certificates/quick-create-portal#add-a-certificate-to-key-vault) on how to
+to create or import a certificate in Azure Key Vault. I chose to import a certificate since I already had one.
+
+_The Name specified in the key vault is used as the SAML certificate configuration key_
+
+## How to retrieve certificates from Azure Key Vault
+
+We'll be using managed identity to access the key vault. See [this](https://docs.microsoft.com/en-us/azure/app-service/overview-managed-identity?tabs=dotnet)
+I went with the system assigned identity.
+
+Next, I granted Key Vault Secrets User `role` to the managed identity using role based access policy(RBAC). See [this](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide?tabs=azure-cli)
+for more details.
+
+Finally, I used the following code to retrieve the certificate from the key vault.
+
+First, specify the key which maps to the name of the certificate in the key vault in the `SAML` section of the appsettings file.
+
+```csharp:appsettings.json {3}
+"LocalCertificates": [
+ {
+    "Key": "IdP"
+ }
+]
+```
+
+The below retrieves the private key from the key vault and makes it accessible through the IConfiguration interface.
+
+```csharp:Program.cs {4}
+ builder.Configuration.AddAzureKeyVault(new Uri(keyVaultConfiguration.RootUri), new DefaultAzureCredential());
+
+ // Add SAML SSO services.
+ builder.Services.AddSaml(builder.Configuration.GetSection("SAML"));
+```
+
+Component Spaces' SAML library accesses the private key string using IConfiguration[“Idp”] where `Idp` is the key specified in the appsettings file.
+
+## How to access key vault from local development environment
+
+In the code above, when you are running the app locally, the `DefaultAzureCredential` will try to access the key vault using the developer's azure credentials.
+See [this](https://learn.microsoft.com/en-us/dotnet/azure/sdk/authentication/local-development-dev-accounts?tabs=azure-portal%2Csign-in-visual-studio%2Ccommand-line) for more details.
+
+So, the following steps are needed to access the key vault from local development environment.
+
+1. Login to azure using `az login` command. For that you'll need to have the azure cli installed.
+2. Assign Key Vault Secrets User `role` to the developer's azure account
+
+## Conclusion
+
+As you can see, storing and retrieving certificates from Azure Key Vault is pretty straight forward and makes managing secrets a cinch.
+
+You now can have the same key if you like to access different certificates in different environments, developers can easily
+run their apps locally, CI/CD does not need to be customized and you don't have to worry about managing this in source control.

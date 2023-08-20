@@ -1,5 +1,5 @@
 import { json, type LoaderFunction } from "@remix-run/server-runtime";
-import { getAllFilesFrontMatter } from "~/lib/mdx.server";
+import { dateSortDesc, getAllFilesFrontMatter } from "~/lib/mdx.server";
 import { useLoaderData } from "@remix-run/react";
 import { getSeoMeta } from "~/seo";
 import ListLayout from "~/layouts/ListLayout";
@@ -24,7 +24,10 @@ export let meta = (context: any) => {
 };
 
 export const loader: LoaderFunction = async () => {
-  const allFrontMatters = await getAllFilesFrontMatter("blog");
+  const allFrontMatters = (await getAllFilesFrontMatter("blog")).sort((a, b) =>
+    dateSortDesc(a.date, b.date)
+  );
+
   allFrontMatters.forEach((frontMatter) => {
     return (frontMatter.date = formatDate(frontMatter.date));
   });

@@ -1,0 +1,93 @@
+---
+title: Creating a test set
+date: "2023-08-24"
+lastmod: "2023-08-24"
+tags:
+  [
+    "machine learning",
+    "test set",
+    "hash function",
+    "data snooping bias",
+    "overfitting",
+  ]
+draft: false
+summary: Creating a test set by hashing the unique identifier of each occurence
+---
+
+## Introduction
+
+How does one create a stable test set across multiple runs. Say, in the first run you isolate a group of
+occurences and keep them aside as a test set. In the second run, you again isolate a group of occurences and keep them.
+But, as you repeat this process again and again for subsequent runs, your model would eventually be exposed
+to all the test data. You might then start making subtle changes to the model based on the test data and then when it
+comes time to ascertain how well your model is performing against the test data then your model will perform better
+than expected and hence would not be reliable.
+
+Making these subtle changes to the model based on the test data is called data snooping bias or overfitting.
+
+## Solution
+
+A crude solution would be to create two sets, a test set and a training set. And use these test and training sets in each
+run.
+
+A more elegant solution would be to use the unique `id`s of each occurence to create a static test set.
+
+If these `id`s are numerical and occur randomly and $$\small{20\%}$$ of the total data must fall in the test set then all you
+have to do is take the ones ending in `00` to `19` and put them in the test set. The ones with `20` to `99` will go in
+the training set.
+
+Database `id`s are not random but rather sequential. It's also possible that the `id`s are not present and you then have
+to identify a column that is unique such as say zip code or email address. If you cannot identity a unique column then you
+might want to take a combination of columns that togethor are unique.
+
+In the former case where `id`s are present we need a way to shuffle these sequential occurences and in the latter case
+we need a numerical representation of the unique column that is again shuffled.
+
+Enter the [hash function](https://en.wikipedia.org/wiki/Hash_function).
+
+> A hash function is any function that can be used to map data of arbitrary size to fixed-size values,
+> though there are some hash functions that support variable length output. The values returned by a hash function are called hash values, hash codes, digests, or simply hashes.
+
+There are 2 unique properties of a hash function that we can use to our advantage.
+
+1. The output is always the same for a given input.
+2. The output will have a uniform probability distribution.
+
+The `md5` hash function has 16 bytes. We can extract the last byte. This last byte will have a value ranging from `0` to `255`.
+
+To demonstrate this I've created a .Net fiddle [here](https://dotnetfiddle.net/hCrDpf).
+The code should be self explanatory. All I'm doing is feeding the `CreateMd5` function a sequence of numbers that you
+can think of as `id`s coming from a database. I then print out these values after sorting them. As you can see whatever the
+sequence of numbers the output will always lie within the range of `0` to `255` and the distribution is uniform.
+
+In the .Net fiddle [here](https://dotnetfiddle.net/hCrDpf), change the range of the `for` loop and run the snippet and
+you'll see that the output will again lie between `0` and `255`.
+
+```csharp {9}
+using System;
+using System.Collections.Generic;
+
+public class Program
+{
+	public static void Main()
+	{
+		var collection = new List<short>();
+		for (int i = 300; i < 1000; i++)
+		{
+			var md5Hash = CreateMD5(i);
+			collection.Add(md5Hash);
+		}
+		collection.Sort();
+		collection.ForEach(r => Console.WriteLine(r));
+
+	}
+
+```
+
+Feel free to replace the input for the `CreateMd5` function with any other data such as a zip code or email address
+or any other arbitrary data that is unique within the sequence and again once you extract the last byte you'll see that the output will lie between
+`0` and `255` and the distribution is uniform.
+
+There will be roughly $$\frac{52}{256}=\small{20.3125\%}$$ hashes whose last byte is strictly lower than $$\small{52}$$. So, if you've
+decide roughly $$\small{20\%}$$ of the data must go into the test set then you can take those records whose last byte is between
+`0` and `51` and put them in the test set. The rest go into the training set.

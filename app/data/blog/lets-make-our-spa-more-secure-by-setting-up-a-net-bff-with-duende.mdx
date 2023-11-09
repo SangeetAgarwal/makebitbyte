@@ -1,0 +1,448 @@
+---
+title: Let's make our SPA more secure by setting up a .NET BFF with Duende
+date: "2023-11-08"
+lastmod: "2023-09-03"
+tags: ["authentication", "oidc", "security", "spa", "bff", "duende"]
+draft: false
+summary: Let's make our SPA more secure by setting up a .NET BFF with Duende
+layout: PostSimpleLayout
+---
+
+## Introduction
+
+Storing access tokens in the browser was never a good idea. Unfortunately, implicit flow is based on storing access token
+in the browser. That is the reason imlicit flow is [not recommended](https://oauth.net/2/grant-types/implicit/#:~:text=It%20is%20not%20recommended%20to,been%20received%20by%20the%20client) anymore.
+In this flow the access token is returned as part of the url and access token in urls is extremely leaky, they end up in
+
+1. browser history
+2. log files
+3. Reverse proxies
+4. Browser extensions
+5. Referrer headers, so say you access a cdn and the cdn via the [referer http request header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referer) can acquire the access token.
+
+Shown below is a schematic of the implicit flow.
+![Implicit flow](/static/images/bff/implicit_flow.drawio.png)
+
+To prevent access tokens from being returned in the url, the authorization code flow was used where the client app receives an
+auth code and then exchanges it for an access token.
+Shown below is the schematic of the authorization code flow.
+![Auth Code flow](/static/images/bff/auth_code_flow.drawio.png)
+
+The problem of storing and managing access tokens in the browser will still remain though. Code injections attacks allow for
+exfilteration of storage contents. Injection attacks is top ten in the OWASP top ten list ^[See the [OWASP top ten list](https://owasp.org/www-project-top-ten/)]
+
+In addition, browser vendors have been debating phasing out 3rd party cookies for some time now. It seems they’ve
+finally decided to bite the bullet per this article from [developer chrome site](https://developer.chrome.com/en/docs/privacy-sandbox/third-party-cookie-phase-out/#:~:text=In%20Chrome%20version%20115%20or,-party-cookie-phaseout%20).
+This would break any application that uses the imlicit flow.
+
+In implicit flow the client app recieves the access token and then via the silent renew mechanism calls the IDP from an `iframe`
+to return a new token passing the cookie in the header. But now with 3rd party cookie disallowed, the `iframe` will not have
+access to this cookie anymore. So, essentially, the client is not able to maintain a session with the server and the server says
+"hey, client, you aren't even logged in". ^[Check out the [Securing SPAs and Blazor Applications using the BFF (Backend for Frontend) Pattern - Dominick Baier](https://youtu.be/xzRhabmlc8M?t=1746)]
+
+## Using BFF architecture to solve the problem
+
+BFF architecture introduces an intermediary layer that runs on the server and since it runs on the server it can
+manage tokens encrypted in `HttpOnly` cookies. The client app which now runs on the browser is absolved of all the
+responsibility of managing tokens. The client app via a reverse proxy simply proxies over any API calls to the intermediary
+layer and the intermediary layer can access the tokens stored in the `HttpOnly` cookie and make any calls to the external API
+sending the access tokens in the header or these calls can be to the local API within the intermediary layer itself and here
+too the access token will be sent in the header.
+
+Shown below is the schematic of the BFF architecture.
+![BFF flow](/static/images/bff/bff_flow.drawio.png)
+
+## Creating the _backend_ part of the backend for frontend (BFF)
+
+![backend of bff](/static/images/bff/backendofbff.png)
+
+The entire source code is available [here](https://github.com/SangeetAgarwal/SecuringAppsWithOAuth2AndOIDC/tree/main/ReactClientAppBFF)
+
+But, I'll walk through the specific pieces we added so it is easy to see the additions we made.
+
+Start by adding the `Duende.BFF` nuget package ^[See the [license terms](https://duendesoftware.com/license)] to a [fresh dot net core web api project](https://learn.microsoft.com/en-us/aspnet/core/tutorials/first-web-api?view=aspnetcore-7.0&tabs=visual-studio)
+
+First you have to register the BFF services with the DI container and add services required for YARP http forwarding.
+
+```csharp
+builder.Services.AddBff()
+    .AddRemoteApis();
+
+```
+
+Next, just as we would do with any other server side client that requires authentication, you'll add the `AddAuthentication` to register the
+services required for authentication. Optionally, we can explicitly specify the cookie scheme where the access token will be stored.
+Finally, we must register the `AddOpenIdConnect` handler to handle the authentication.
+
+```csharp
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = "oidc";
+    options.DefaultSignOutScheme = "oidc";
+
+})
+.AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+{
+    options.Cookie.Name = "__ReactSPA";
+})
+.AddOpenIdConnect("oidc", options =>
+{
+    options.Authority = identityServerConfiguration.BaseUrl.ToLower();
+
+    options.ClientId = clientConfiguration.ClientId;
+    options.ClientSecret = clientConfiguration.ClientSecret;
+    options.ResponseType = "code";
+
+    options.Scope.Add("roles");
+    options.Scope.Add("subscriberSince");
+    options.Scope.Add("notesapi.write");
+    options.Scope.Add("notesapi.read");
+    options.Scope.Add("notesapi.fullaccess");
+
+    options.ClaimActions.Remove("aud");
+    options.ClaimActions.DeleteClaim("sid");
+    options.ClaimActions.DeleteClaim("idp");
+
+    options.ClaimActions.MapJsonKey("role", "role");
+    options.ClaimActions.MapJsonKey("subscriberSince", "subscriberSince");
+
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        RoleClaimType = "role",
+        NameClaimType = "given_name"
+    };
+    options.SaveTokens = true;
+    options.GetClaimsFromUserInfoEndpoint = true;
+});
+```
+
+Next, we'll add the bff middleware by calling `UseBff`.
+
+`MapBffManagementEndpoints` adds support for login, logout and logout notifications.
+
+`AsBffApiEndpoint` adds support for local APIs. This includes anti-forgery
+protection as well as suppressing login redirects on authentication failures and
+instead returning `401` and `403` status codes under the appropriate circumstances.
+
+Finally, `MapRemoteBffApiEndpoint` proxies any local calls to the actual remote api passing the access token.
+
+```csharp
+app.UseAuthentication();
+app.UseBff();
+app.UseAuthorization();
+
+app.MapControllers().AsBffApiEndpoint();
+
+app.MapBffManagementEndpoints();
+
+app.MapRemoteBffApiEndpoint(
+        "/api/notes", "https://localhost:7094/api/Note/GetNotes")
+    .RequireAccessToken(TokenType.User);
+
+```
+
+Let's now test to see if we have configured everything properly.
+Set the startup projects as `MakeBitByte.IDP` and `ReactClientAppBFF` and run the solution.
+
+Once `ReactClientAppBFF` starts up, call the `https://localhost:7249/bff/login` endpoint. This should redirect you to the
+`MakeBitByte.IDP` login page. And once you login using say `app` with password `P@ssw0rd` you should get redirected back
+the index page.
+
+If you open your developer tools and look at the cookies you should see the `__ReactSPA` cookie.
+
+![bff cookie](/static/images/bff/spacookie.png)
+
+If you attempt to access the `https://localhost:7249/bff/user` endpoint then you'll get an `401` error. If you look
+at the logs then you'll see the following error.
+
+```bash
+fail: Duende.Bff.Endpoints.BffMiddleware[1]
+      Anti-forgery validation failed. local path: '/bff/user'
+```
+
+The bff middleware adds anti-forgery protection to all calls and since we didn't add the anti-forgery teken `"X-CSRF": '1'`
+to the header we get this error.
+
+## Notes API with authorization
+
+![remote api](/static/images/bff/remoteapi.png)
+
+This is just a regular dot net core web api project whos endpoints are behind an IDP. In other words these require
+an `access token`.
+
+The source code for this api is available [here](https://github.com/SangeetAgarwal/SecuringAppsWithOAuth2AndOIDC/blob/main/Notes.API/Controllers/NoteController.cs)
+It requires an `access token` issued by the [MakeBitByte.IDP](https://github.com/SangeetAgarwal/SecuringAppsWithOAuth2AndOIDC/tree/main/MakeBitByte.IDP).
+
+## React client app
+
+![frontend of bff](/static/images/bff/frontendofbff.png)
+Finally, we'll add the _frontend_ for the backend for frontend (BFF). This now is the react client app.
+
+The source code for this app is available [here](https://github.com/SangeetAgarwal/SecuringAppsWithOAuth2AndOIDC/tree/main/ReactClientApp).
+
+I created the app with [vite](https://vitejs.dev/guide/) using the following command.
+
+```bash
+npm create vite@latest reactclientappbff -- --template react-ts
+```
+
+Then I added [Tailwind CSS](https://tailwindcss.com/) to the app using [this guide](https://tailwindcss.com/docs/guides/vite).
+
+I added [react query](https://tanstack.com/query/v3/) as well as axios to the app.
+
+```bash
+npm install react-query axios
+```
+
+update the `main.tsx` to look like so
+
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+import { QueryClient, QueryClientProvider } from "react-query";
+import { BrowserRouter } from "react-router-dom";
+
+// Create a client
+const queryClient = new QueryClient();
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    {/* Provide the client to your App  */}
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </QueryClientProvider>
+  </React.StrictMode>
+);
+```
+
+Wrapping the `App` component with `QueryClientProvider` makes the `queryClient` available to all the components in the app.
+
+We'll now create a custom `useAuthUser` hook. Within this hook we'll use the `useQuery` hook from `react-query` to fetch
+the claims from the `/bff/user` endpoint.
+
+So, our custom `useAuthUser` hook will look like so, if you need a quick refresher on what custom hooks are or how to
+create them then check out [this article](https://react.dev/learn/reusing-logic-with-custom-hooks).
+
+```tsx
+import axios from "axios";
+import { useEffect, useState } from "react";
+import { useQuery } from "react-query";
+
+interface AuthUser {
+  given_name: string | undefined;
+  family_name: string | undefined;
+  email: string;
+  sub: string;
+  roles: string[];
+  bffLogoutUrl: string;
+}
+
+const config = {
+  headers: {
+    "X-CSRF": "1",
+  },
+};
+
+export const fetchClaims = async () => {
+  const response = await axios.get("/bff/user", config);
+  return response.data;
+};
+
+function useClaims() {
+  const { isLoading, error, data } = useQuery("claims", fetchClaims, {
+    retry: false,
+  });
+  return { isLoading, error, data };
+}
+
+export function useAuthUser() {
+  const { isLoading, error, data } = useClaims();
+  const claims = data as [{ type: string; value: string }];
+
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    if (claims) {
+      const given_name =
+        claims.find((c) => c.type === "given_name")?.value ?? "";
+      const family_name =
+        claims.find((c) => c.type === "family_name")?.value ?? "";
+      const email = claims.find((c) => c.type === "email")?.value ?? "";
+      const sub = claims.find((c) => c.type === "sub")?.value ?? "";
+      const roles = claims.filter((c) => c.type === "role").map((c) => c.value);
+      const bffLogoutUrl =
+        claims.find((c) => c.type === "bff:logout_url")?.value ?? "";
+      setUser({ given_name, family_name, email, sub, roles, bffLogoutUrl });
+    }
+  }, [claims]);
+  return { isLoading, error, claims, user };
+}
+```
+
+But, where would this `/bff/user` endpoint be? Remember, we added the `MapBffManagementEndpoints` middleware in the `Configure` method
+of the `Startup` class in the `ReactClientAppBFF` project. This middleware adds support for login, logout and logout notifications.
+So, the `/bff/user` endpoint is added by this middleware. And since we set the `returnUrl` to `"/"` in `/bff/login?returnUrl=/` we
+get routed back to the index page of our react app.
+
+Next question would be how do we get to this `/bff/user` endpoint? We are routing to this endpoint as if this exists in our local app when in fact
+it exists in the `ReactClientAppBFF` project. This is where the reverse proxy comes in. We'll add a reverse proxy to the `vite.config.ts`.
+
+So, now all calls to `/bff/user` will be routed to `https://localhost:7249/bff/user`.
+
+```ts {9,10}
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import basicSsl from "@vitejs/plugin-basic-ssl";
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react(), basicSsl()],
+  server: {
+    proxy: {
+      "/bff": {
+        target: "https://localhost:7249",
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on("error", (err, _req, _res) => {
+            console.log("proxy error", err);
+          });
+          proxy.on("proxyReq", (proxyReq, req, _res) => {
+            console.log("Sending Request to the Target:", req.method, req.url);
+          });
+          proxy.on("proxyRes", (proxyRes, req, _res) => {
+            console.log(
+              "Received Response from the Target:",
+              proxyRes.statusCode,
+              req.url
+            );
+          });
+        },
+      },
+      "/signin-oidc": {
+        target: "https://localhost:7249",
+        secure: false,
+      },
+      "/signout-callback-oidc": {
+        target: "https://localhost:7249",
+        secure: false,
+      },
+      "/api/notes": {
+        target: "https://localhost:7249",
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on("error", (err, _req, _res) => {
+            console.log("proxy error", err);
+          });
+          proxy.on("proxyReq", (proxyReq, req, _res) => {
+            console.log("Sending Request to the Target:", req.method, req.url);
+          });
+          proxy.on("proxyRes", (proxyRes, req, _res) => {
+            console.log(
+              "Received Response from the Target:",
+              proxyRes.statusCode,
+              req.url
+            );
+          });
+        },
+      },
+      "/local/identity": {
+        target: "https://localhost:7249",
+        secure: false,
+      },
+    },
+  },
+});
+```
+
+All calls to the `/bff/user` endpoint will have the `HttpOnly` cookie attached to the request and the `bff` middleware in the
+`ReactClientAppBFF` project will be able to extract the access token from the cookie and make the call to the IDP to get the claims.
+
+We get this `httpOnly` cookie in our browser from the login procedure as follows. Once we call
+`/bff/login` endpoint we get redirected to the IDP's login page. When the user is sent to the IDP's login page, the `redirect_uri` is set to `/signin-oidc` on the origin of the
+react app since the react app initiates the login process, so this then translates to `https://localhost:5173/signin-oidc`.
+
+In the `vite.config.ts` where we set the proxy you'll see that `/signin-oidc` is proxied to `https://localhost:7249/signin-oidc`.
+
+```ts
+  "/signin-oidc": {
+    target: "https://localhost:7249",
+    secure: false,
+  },
+```
+
+`https://localhost:7249/signin-oidc` is a virtual endpoint on our `ReactClientAppBFF` project. Once the user has successfully
+logged in, they'll be returned to this endpoint with the tokens from the IDP. And, this where the `bff`
+middleware will wrap this access token in a `HttpOnly` cookie and set the `HttpOnly` cookie on the response. And we get routed back to the index page of our react app.
+
+This is the reason why we must add these two endpoints to the list of allowed uris in the `RedirectUris` in the
+`client` configuration in the IDP's `Config.cs` file.
+
+```csharp
+RedirectUris =
+{
+   "https://localhost:7249/signin-oidc",
+   "https://localhost:5173/signin-oidc"
+}
+```
+
+Alright, now that we have the `HttpOnly` cookie, we are free to make calls to other endpoints such as `/api/notes` which
+is proxied to `https://localhost:7249/api/notes`.
+Again, take a look at the `vite.config.ts` file where we set the proxy.
+
+```ts
+ "/api/notes": {
+   target: "https://localhost:7249",
+   secure: false,
+ }
+```
+
+Remember, this call will have the cookie set in the header.
+If you remember, our `ReactClientAppBFF` project has the following in the `Program.cs` file
+
+```csharp
+app.MapRemoteBffApiEndpoint(
+        "/api/notes", "https://localhost:7094/api/Note/GetNotes")
+    .RequireAccessToken(TokenType.User);
+```
+
+This means that any calls to `/api/notes` on the `ReactClientAppBFF` project which translates to `https://localhost:7249/api/notes`
+will now be further proxied over to `https://localhost:7094/api/Note/GetNotes` and the access token which is extracted from the `HttpOnly` cookie
+will be sent in the header.
+
+And the resultant json response will be returned to the react app which is encapsulated in the custom hook `useNotes` shown below.
+
+```ts
+import axios from "axios";
+import { useQuery } from "react-query";
+
+const config = {
+  headers: {
+    "X-CSRF": "1",
+  },
+};
+
+const fetchNotes = async () => {
+  const response = await axios("/api/notes", config);
+  return response.data;
+};
+
+const useNotes = () => {
+  const { isLoading, error, data } = useQuery("notes", fetchNotes, {
+    retry: false,
+  });
+  return { isLoading, error, data };
+};
+
+export default useNotes;
+```
+
+## Conclusion
+
+In this article we saw how to implement the BFF architecture to secure a react app. The Duende BFF middleware makes it
+easy to implement the BFF architecture. But, there is a fair amount of complexity under the hood and I wanted to delve
+into some of these complexities so it doesn't seem like all magic and it also helps to know what is going on under the hood
+when one has to debug issues.

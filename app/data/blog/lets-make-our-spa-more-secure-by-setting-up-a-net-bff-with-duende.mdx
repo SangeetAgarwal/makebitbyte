@@ -1,7 +1,7 @@
 ---
 title: Let's make our SPA more secure by setting up a .NET BFF with Duende
 date: "2023-11-08"
-lastmod: "2023-09-03"
+lastmod: "2023-11-10"
 tags: ["authentication", "oidc", "security", "spa", "bff", "duende"]
 draft: false
 summary: Let's make our SPA more secure by setting up a .NET BFF with Duende
@@ -146,7 +146,7 @@ Let's now test to see if we have configured everything properly.
 Set the startup projects as `MakeBitByte.IDP` and `ReactClientAppBFF` and run the solution.
 
 Once `ReactClientAppBFF` starts up, call the `https://localhost:7249/bff/login` endpoint. This should redirect you to the
-`MakeBitByte.IDP` login page. And once you login using say `app` with password `P@ssw0rd` you should get redirected back
+`MakeBitByte.IDP` login page. And once you login using say `appa` with password `P@ssw0rd` you should get redirected back
 the index page.
 
 If you open your developer tools and look at the cookies you should see the `__ReactSPA` cookie.
@@ -284,15 +284,8 @@ export function useAuthUser() {
 }
 ```
 
-But, where would this `/bff/user` endpoint be? Remember, we added the `MapBffManagementEndpoints` middleware in the `Configure` method
-of the `Startup` class in the `ReactClientAppBFF` project. This middleware adds support for login, logout and logout notifications.
-So, the `/bff/user` endpoint is added by this middleware. And since we set the `returnUrl` to `"/"` in `/bff/login?returnUrl=/` we
-get routed back to the index page of our react app.
-
-Next question would be how do we get to this `/bff/user` endpoint? We are routing to this endpoint as if this exists in our local app when in fact
+But how do we get to this `/bff/user` endpoint? We are routing to this endpoint as if this exists in our local app when in fact
 it exists in the `ReactClientAppBFF` project. This is where the reverse proxy comes in. We'll add a reverse proxy to the `vite.config.ts`.
-
-So, now all calls to `/bff/user` will be routed to `https://localhost:7249/bff/user`.
 
 ```ts {9,10}
 import { defineConfig } from "vite";
@@ -358,16 +351,42 @@ export default defineConfig({
 });
 ```
 
+So, now all calls to `/bff/user` will be proxied to `https://localhost:7249/bff/user`.
+
+This virtual endpoint `https://localhost:7249/bff/user` is added by the `app.MapBffManagementEndpoints()` statement in the
+`program.cs` file of the `ReactClientAppBFF` project. Here's the extension method's implementation.
+
+```csharp {6}
+   public static void MapBffManagementEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapBffManagementLoginEndpoint();
+        endpoints.MapBffManagementSilentLoginEndpoints();
+        endpoints.MapBffManagementLogoutEndpoint();
+        endpoints.MapBffManagementUserEndpoint();
+        endpoints.MapBffManagementBackchannelEndpoint();
+        endpoints.MapBffDiagnosticsEndpoint();
+    }
+```
+
 All calls to the `/bff/user` endpoint will have the `HttpOnly` cookie attached to the request and the `bff` middleware in the
 `ReactClientAppBFF` project will be able to extract the access token from the cookie and make the call to the IDP to get the claims.
+We specify that the claims must fetched from the IDP's user info endpoint in the `AddOpenIdConnect` handler in the `ReactClientAppBFF` project.
+
+```csharp
+.AddOpenIdConnect("oidc", options =>
+{
+  // code omitted for brevity
+  options.GetClaimsFromUserInfoEndpoint = true;
+});
+```
 
 We get this `httpOnly` cookie in our browser from the login procedure as follows. Once we call
 `/bff/login` endpoint we get redirected to the IDP's login page. When the user is sent to the IDP's login page, the `redirect_uri` is set to `/signin-oidc` on the origin of the
 react app since the react app initiates the login process, so this then translates to `https://localhost:5173/signin-oidc`.
 
-In the `vite.config.ts` where we set the proxy you'll see that `/signin-oidc` is proxied to `https://localhost:7249/signin-oidc`.
+In the `vite.config.ts` where we set the proxy, you'll see that `/signin-oidc` is proxied to `https://localhost:7249/signin-oidc`.
 
-```ts
+```ts {1,2}
   "/signin-oidc": {
     target: "https://localhost:7249",
     secure: false,

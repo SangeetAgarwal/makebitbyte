@@ -442,7 +442,10 @@ export default useNotes;
 
 ## Conclusion
 
-In this article we saw how to implement the BFF architecture to secure a react app. The Duende BFF middleware makes it
-easy to implement the BFF architecture. But, there is a fair amount of complexity under the hood and I wanted to delve
-into some of these complexities so it doesn't seem like all magic and it also helps to know what is going on under the hood
-when one has to debug issues.
+_Caveat emptor_, goes without saying that this isn't production ready just yet, so for example, you'll want to add
+error handling so your app fails gracefully, and the vite reverse proxy is only good for local development. In a production
+scenario you'll probably want to add [yarp](https://microsoft.github.io/reverse-proxy/), The primary intent of this article was to
+explain the main concepts behind the BFF architecture while securing a react app, and though the Duende BFF middleware makes
+it easy to implement the BFF architecture for securing a browser based apps, there is a fair amount of complexity under the
+hood and this article delves into some of those so it doesn't seem like all magic, and it always helps to know
+what is going on beneath the surface especially when one is attempting to debug a rather intractable problem.

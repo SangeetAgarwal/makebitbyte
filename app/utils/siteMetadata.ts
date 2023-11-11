@@ -12,6 +12,8 @@ const siteMetadata = {
   stackoverflow: "https://stackoverflow.com/users/2188275/sangeet-agarwal",
   youtube: "https://www.youtube.com/channel/UCtNmwaDH4rDTO7Fh-P84HRw",
   locale: "en-US",
+  twitterCardType: "summary_large_image",
+  twitterUsername: "@sangymohan",
 };
 
 export { siteMetadata };

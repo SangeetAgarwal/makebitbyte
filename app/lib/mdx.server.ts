@@ -234,6 +234,7 @@ export async function getFileBySlug(type: string, slug: string) {
       date: frontmatter.date ? new Date(frontmatter.date).toISOString() : null,
       title: frontmatter.title,
       description: frontmatter.summary,
+      images: frontmatter.images ?? null,
     },
     authorFrontMatter: {
       name: frontmatter.name ? frontmatter.name : null,

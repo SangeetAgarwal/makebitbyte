@@ -1,5 +1,5 @@
 ---
-title: Securing our SPA React app with a BFF (Backend for Frontend) using Duende BFF middleware
+title: Securing SPA React app with Duende BFF
 date: "2023-11-08"
 lastmod: "2023-11-11"
 tags: ["authentication", "oidc", "security", "spa", "bff", "duende", "react"]
@@ -12,7 +12,7 @@ images: ["/static/images/bff/securingspabffduende.jpg"]
 ## Introduction
 
 Storing access tokens in the browser was never a good idea. Unfortunately, implicit flow is based on storing access token
-in the browser. That is the reason imlicit flow is [not recommended](https://oauth.net/2/grant-types/implicit/#:~:text=It%20is%20not%20recommended%20to,been%20received%20by%20the%20client) anymore.
+in the browser. That is the reason implicit flow is [not recommended](https://oauth.net/2/grant-types/implicit/#:~:text=It%20is%20not%20recommended%20to,been%20received%20by%20the%20client) anymore.
 In this flow the access token is returned as part of the url and access token in urls is extremely leaky, they end up in
 
 1. browser history

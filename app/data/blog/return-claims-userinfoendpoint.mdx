@@ -1,0 +1,129 @@
+---
+title: Return additional claims from user info endpoint in OpenID Connect rather than in an access token
+date: "2023-11-18"
+lastmod: "2023-11-18"
+tags:
+  [
+    "authentication",
+    "access token",
+    "openid connect",
+    "user info endpoint",
+    "claims",
+    "token endpoint",
+  ]
+draft: false
+summary: If you return your claims in an access token then you might hit the size limit since access token are returned in the url, you might be better off returning your claims from the user info endpoint.
+images: ["/static/images/additionalclaimsuserinfo/returnclaimsuserinfo.jpg"]
+layout: PostSimpleLayout
+---
+
+## Introduction
+
+Recently, I ran across an issue where we were hitting the size limit for an access token. We were using the implicit
+flow for a browser based app and for a specific user I'd get the following error:
+
+> The specified CGI application encountered an error and the server terminated the process
+
+## Solution
+
+The authorization server is [Identity4](https://github.com/IdentityServer/IdentityServer4). JWTs themselves don't have a
+size limit but in the implicit flow they are returned as a url fragment and hence there is a size limitation to how large
+the url can be and by extension how large the access token can be. In short access tokens have to be transported via
+length constrained transport mechanisms such as browser URLs when using the impicit flow.
+
+My first instinct was to use the [auth code with pkce protenction](https://tools.ietf.org/html/rfc7636) and in fact later
+I saw that another Identity provider [Auth0](https://auth0.com/) recommends [this approach](https://community.auth0.com/t/i-get-the-error-the-generated-token-is-too-large-try-with-more-specific-scopes/15274) to circumvent the size limitation.
+Rationale for using the auth code flow is that the auth code is returned in the url to the Client
+and that auth code is then exchanged for the access token from the `token` endpoint and as such the access token wouldn't have
+this size limitations.
+
+We are using the [oidc-client.js](https://github.com/IdentityModel/oidc-client-js) library to handle authentication on the
+client side and when I switched to auth code with pkce then it worked perfectly with the access token being returned from
+the `token` endpoint and it had all the additional claims.
+
+There is another way to solve this issue though and that involves returning the addtional claims from a server side api and that
+server side api in turn makes a call to the `user info` endpoint on the IDP to get the additional claims. This approach is described
+below:
+
+1. Ensure that only the basic claims are returned in the access token and all the extended claims
+   are returned from the user info endpoint. In both Identity4 and in its newer avatar [Duende Identity Server](https://github.com/DuendeSoftware/IdentityServer)
+   one can override `GetProfileDataAsync` method in the [IProfileService interface](https://docs.duendesoftware.com/identityserver/v5/reference/services/profile_service/).
+
+   Given below is how this would look where we are returning only the basic claims for the access token and all the additional claims
+   from the user info endpoint.
+
+   ```csharp
+   public async Task GetProfileDataAsync(ProfileDataRequestContext context)
+   {
+
+      switch (context.Caller)
+      {
+          case IdentityServerConstants.ProfileDataCallers.ClaimsProviderIdentityToken:
+          case IdentityServerConstants.ProfileDataCallers.ClaimsProviderAccessToken:
+            // add only basic claims such as sub, name, email etc. to context.IssuedClaims.AddRange(claims to be added)
+          case IdentityServerConstants.ProfileDataCallers.UserInfoEndpoint:
+            // add basic claims such as sub, name, email etc. to context.IssuedClaims.AddRange(claims to be added)
+            // add extended claims to to context.IssuedClaims.AddRange(claims to be added)
+             break;
+      }
+    }
+   ```
+
+   2. Add a `GET` method to the API that your browser based app calls, this would look something like this. I'd probably just
+      add another claim api controller that has just this one method to keep things clean. The code is pretty self explanatory.
+      We first get hold of the access token and then call the `user info` endpoint to get the additional claims passing it the
+      access token.
+
+   ```csharp
+    [HttpGet("GetClaims")]
+    [Authorize]
+    public async Task<ActionResult<UserInfoResponse>> GetClaims()
+    {
+        var client = new HttpClient();
+        var token = await HttpContext.GetTokenAsync("access_token");
+        var disco = await client.GetDiscoveryDocumentAsync(_identityServerConfiguration.BaseUrl);
+        var response = await client.GetUserInfoAsync(new UserInfoRequest
+        {
+            Address = disco.UserInfoEndpoint,
+            Token = token
+        });
+
+        return response;
+    }
+   ```
+
+   3. On the client side, you would call the above api to get the additional claims. Given below is how this would look
+      using say [react query](https://react-query.tanstack.com/).
+
+   ```typescript
+   import axios from "axios";
+   import { useQuery } from "react-query";
+
+   const fetchAdditionalClaims = async () => {
+     const response = await axios(
+       `process.env.REACT_APP_API_ENDPOINT${api / claim / GetAdditionalClaims}`,
+       config
+     );
+     ("/api/claimsFromAPI");
+   };
+
+   const useClaims = () => {
+     const { isLoading, error, data } = useQuery(
+       "claimsFromAPI",
+       fetchAdditionalClaims,
+       {
+         retry: false,
+       }
+     );
+     return { isLoading, error, data };
+   };
+
+   export default useClaims;
+   ```
+
+   Finally, you would get hold of the response with say `const response = useClaims();` and `response.data?.claims?` would
+   contain the additional claims.
+
+   I'd like to point out that implicit flow is not recommneded ^[[The OAuth 2.0 Security Best Current Practice document](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#name-implicit-grant) recommends against using the Implicit flow entirely] for browser based app and backend for front end (BFF) is
+   now the recommended approach. But, if you have a legacy app that uses implicit flow and if you have to return quite a few
+   claims then you might run into the above issue and the couple of approaches described above might help you out.

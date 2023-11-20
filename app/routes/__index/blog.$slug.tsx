@@ -9,6 +9,7 @@ import formatDate from "~/lib/utils/formatDate";
 import type { SEOHandle } from "@balavishnuvj/remix-seo";
 import type { ReadTimeResults } from "reading-time";
 import { siteMetadata } from "~/utils/siteMetadata";
+import type { PostProps } from "~/types";
 const DEFAULT_LAYOUT = "PostSimpleLayout";
 
 export const handle: SEOHandle = {
@@ -79,8 +80,10 @@ export const loader: LoaderFunction = async ({
 }) => {
   const slug = params.slug;
   if (slug) {
-    const post = await getFileBySlug("blog", slug);
+    const post: PostProps = await getFileBySlug("blog", slug);
     post.frontMatter.date = formatDate(post.frontMatter.date!);
+    const canonical = `${siteMetadata.siteUrl}/blog/${post.frontMatter.slug}`;
+    post["canonical"] = canonical;
     return json(post);
   }
 };
